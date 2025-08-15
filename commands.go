@@ -19,6 +19,7 @@ func (app *App) shouldExclude(command string) bool {
 			continue // Skip invalid patterns
 		}
 		if matched {
+			fmt.Printf("matched pattern: %s for %s\n", pattern, command)
 			return true
 		}
 	}
@@ -33,6 +34,8 @@ func (app *App) recordCommand(cmd *cobra.Command, args []string) {
 	if err != nil {
 		wd = "unknown"
 	}
+
+	fmt.Println("before filtering " + command)
 
 	// Check if command should be excluded
 	if app.shouldExclude(command) {
@@ -296,12 +299,29 @@ func (app *App) showSetupInstructions(cmd *cobra.Command, args []string) {
 	fmt.Println("Bash Command Tracker Setup Instructions")
 	fmt.Println(strings.Repeat("=", 50))
 	fmt.Println()
-	fmt.Println("To start tracking your bash commands, add the following line to your ~/.bashrc file:")
+	fmt.Println("Method 1 (Recommended): Using fc command")
+	fmt.Println("Add the following to your ~/.bashrc:")
 	fmt.Println()
-	fmt.Printf(`export PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND$'\n'}%s record \"$(history 1 | sed 's/^[ ]*[0-9]*[ ]*//')\""`, execPath)
+	fmt.Printf("# BashTrack command recording\n")
+	fmt.Printf("bashtrack_record() {\n")
+	fmt.Printf("    local last_cmd=$(fc -ln -1 2>/dev/null | sed 's/^[ \\t]*//')\n")
+	fmt.Printf("    if [[ -n \"$last_cmd\" && \"$last_cmd\" != bashtrack* ]]; then\n")
+	fmt.Printf("        %s record-last \"$last_cmd\" 2>/dev/null\n", execPath)
+	fmt.Printf("    fi\n")
+	fmt.Printf("}\n")
+	fmt.Printf("export PROMPT_COMMAND=\"${PROMPT_COMMAND:+$PROMPT_COMMAND$'\\n'}bashtrack_record\"\n")
 	fmt.Println()
+	fmt.Println("Method 2: Using history command (fallback)")
+	fmt.Println("If Method 1 doesn't work, try:")
 	fmt.Println()
-	fmt.Println("Then reload your bash configuration:")
+	fmt.Printf("# Enable immediate history recording\n")
+	fmt.Printf("shopt -s histappend\n")
+	fmt.Printf("export HISTCONTROL=ignoredups:erasedups\n")
+	fmt.Printf("export HISTSIZE=10000\n")
+	fmt.Printf("export HISTFILESIZE=20000\n")
+	fmt.Printf("export PROMPT_COMMAND=\"history -a; ${PROMPT_COMMAND:+$PROMPT_COMMAND$'\\n'}%s record-last\"\n", execPath)
+	fmt.Println()
+	fmt.Println("After adding either method to ~/.bashrc, reload it with:")
 	fmt.Println("  source ~/.bashrc")
 	fmt.Println()
 	fmt.Println("Note: The tool automatically excludes common commands and sensitive patterns.")

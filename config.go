@@ -23,17 +23,17 @@ func loadConfig(configDir string) (*Config, error) {
 	// Default configuration
 	defaultConfig := &Config{
 		ExcludePatterns: []string{
-			"^ls$",
-			"^cd$",
-			"^pwd$",
-			"^clear$",
-			"^exit$",
-			"^history",
+			"^ls.*",
+			"^cd.*",
+			"^pwd.*",
+			"^clear.*",
+			"^exit.*",
+			"^history.*",
 			".*password.*",
 			".*secret.*",
 			".*token.*",
 			".*key.*",
-			appName + " record",
+			".*" + appName + ".*",
 		},
 		DatabasePath: filepath.Join(configDir, dbFile),
 	}
