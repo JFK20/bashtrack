@@ -28,8 +28,6 @@ func (app *App) shouldExclude(command string) bool {
 func (app *App) recordCommand(cmd *cobra.Command, args []string) {
 	command := strings.Join(args, " ")
 
-	fmt.Printf("Recording command: %s\n", command)
-
 	wd, err := os.Getwd()
 	if err != nil {
 		wd = "unknown"
