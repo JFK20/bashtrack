@@ -1,15 +1,17 @@
 # Bash Command Tracker
 
-A powerful CLI tool written in Go that tracks all your bash commands in an SQLite database with intelligent filtering and comprehensive search capabilities.
+A powerful, lightweight CLI (Go) that persistently records your interactive bash command history with timestamps and working directory into a local SQLite database. Provides fast fuzzy‑style searches, statistics, configurable exclusions, and safe local storage with zero telemetry.
 
 ## Features
 
-- **Automatic Command Tracking**: Captures every bash command with timestamp and working directory
-- **SQLite Storage**: Lightweight, local database storage
-- **Smart Filtering**: Configurable exclude patterns for sensitive or common commands
-- **Search & Analytics**: Powerful search functionality and usage statistics
-- **Cross-Platform**: Works on Linux, macOS, and Windows
-- **Privacy-First**: All data stays local on your machine
+- **Automatic Command Tracking**: Records each executed bash command with timestamp + working directory using a prompt hook
+- **SQLite Storage**: Small, single-file database; transactional writes (no lost records on crash)
+- **Smart Filtering**: Regex exclude patterns to skip noisy or sensitive commands (configurable at runtime)
+- **Search & Analytics**: Filter, free‑text search, top commands/directories, basic activity stats
+- **Cleanup & Retention**: Built‑in pruning of old entries by age
+- **Cross-Platform**: Linux, macOS, Windows (WSL / Git Bash / MSYS2)
+- **Privacy-First**: 100% local; no network calls; sensitive patterns excluded by default
+- **Zero Shell History Mutation**: Reads, but does not rewrite your original history file
 
 ## Installation
 
@@ -27,32 +29,61 @@ go mod tidy
 go build -o bashtrack
 ```
 
-3. Move to your PATH:
+3. Put the binary on your PATH:
 ```bash
 sudo mv bashtrack /usr/local/bin/
-# or
-cp bashtrack ~/bin/  # if ~/bin is in your PATH
+# or (no sudo)
+install -m 755 bashtrack "$HOME/.local/bin/"  # ensure ~/.local/bin is in PATH
 ```
 
-### Pre-built Binaries
-
-Download the latest release from the releases page and place it in your PATH.
+(Alternative) Direct install with Go toolchain:
+```bash
+go install github.com/your-user/bashtrack@latest
+```
 
 ## Setup
 
-1. Run the setup command to see installation instructions:
+Two alternative integration methods. Prefer Method 1 (fc) for accuracy & zero race conditions.
+
+Method 1 (Recommended: fc built‑in)
+Add to your ~/.bashrc (append near the end):
 ```bash
-bashtrack setup
+# BashTrack command recording (Method 1)
+bashtrack_record() {
+    local last_cmd=$(fc -ln -1 2>/dev/null | sed 's/^[ \t]*//')
+    if [[ -n "$last_cmd" && "$last_cmd" != bashtrack* ]]; then
+        bashtrack record "$last_cmd" 2>/dev/null
+    fi
+}
+export PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND$'\n'}bashtrack_record"
 ```
 
-2. Add the tracking hook to your `~/.bashrc`:
+Method 2 (Fallback: history -a)
+Use if fc is unavailable / restricted:
 ```bash
-export PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND\n'}bashtrack record \"\$(history 1 | sed 's/^[ ]*[0-9]*[ ]*//')\""
+# Enable immediate history append
+shopt -s histappend
+export HISTCONTROL=ignoredups:erasedups
+export HISTSIZE=10000
+export HISTFILESIZE=20000
+
+bashtrack_record() {
+    local last_cmd=$(history 1 | sed 's/^[ ]*[0-9]*[ ]*//')
+    if [[ -n "$last_cmd" && "$last_cmd" != bashtrack* ]]; then
+        bashtrack record "$last_cmd" 2>/dev/null
+    fi
+}
+export PROMPT_COMMAND="history -a; ${PROMPT_COMMAND:+$PROMPT_COMMAND$'\n'}bashtrack_record"
 ```
 
-3. Reload your bash configuration:
+Reload your shell:
 ```bash
 source ~/.bashrc
+```
+
+Verify:
+```bash
+bashtrack list
 ```
 
 ## Usage
@@ -60,23 +91,29 @@ source ~/.bashrc
 ### Basic Commands
 
 ```bash
+# Record an arbitrary command manually (rarely needed)
+bashtrack record "echo hello"
+
 # List recent commands
 bashtrack list
 
 # List with custom limit
 bashtrack list -l 50
 
-# Search for commands containing a pattern
-bashtrack search "docker"
+# Filter by substring/pattern within the command
+bashtrack list -f docker
 
-# Filter by directory
+# Filter by directory substring
 bashtrack list -d "/home/user/projects"
 
-# Show usage statistics
+# Search (same as list -f but capped at 50 and optimized)
+bashtrack search "docker build"
+
+# Show statistics
 bashtrack stats
 
-# Clean up old commands (older than 90 days)
-bashtrack cleanup -d 90
+# Remove commands older than N days (default 90)
+bashtrack cleanup -d 120
 ```
 
 ### Configuration Management
@@ -85,142 +122,78 @@ bashtrack cleanup -d 90
 # Show current configuration
 bashtrack config show
 
-# Add exclude pattern
+# Add regex exclude pattern
 bashtrack config add-exclude "^vim.*"
 
-# Remove exclude pattern
-bashtrack config remove-exclude "^ls$"
+# Remove pattern (exact string match)
+bashtrack config remove-exclude "^ls.*"
 ```
 
 ## Default Exclude Patterns
 
-The tool comes with sensible defaults to exclude:
+The initial config excludes noisy navigation, history invocations, sensitive keywords, and self‑referential tracker usage:
 
-- Common navigation commands (`ls`, `cd`, `pwd`, `clear`, `exit`)
-- History commands
-- Sensitive patterns (anything containing `password`, `secret`, `token`, `key`)
-- The tracker's own record commands
+- `^ls.*`, `^cd.*`, `^pwd.*`, `^clear.*`, `^exit.*`
+- `^history.*`
+- `.*password.*`, `.*secret.*`, `.*token.*`, `.*key.*`
+- `.*bashtrack.*` (prevents recursion)
 
-## Database Schema
-
-The SQLite database stores:
-
-```sql
-CREATE TABLE commands (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        timestamp DATETIME NOT NULL,
-                        command TEXT NOT NULL,
-                        directory TEXT NOT NULL
-);
-```
+You can relax or extend these via `bashtrack config add-exclude` / `remove-exclude`.
 
 ## Configuration
 
-Configuration is stored in `~/.bashtrack/config.json`:
+Stored at `~/.bashtrack/config.json` (auto-created on first run):
 
 ```json
 {
   "exclude_patterns": [
-    "^ls$",
-    "^cd$",
-    "^pwd$",
-    "^clear$",
-    "^exit$",
-    "^history",
+    "^ls.*",
+    "^cd.*",
+    "^pwd.*",
+    "^clear.*",
+    "^exit.*",
+    "^history.*",
     ".*password.*",
     ".*secret.*",
     ".*token.*",
     ".*key.*",
-    "bashtrack record"
+    ".*bashtrack.*"
   ],
   "database_path": "/home/user/.bashtrack/commands.db"
 }
 ```
 
+Edits can be made manually or through `bashtrack config` subcommands. Invalid JSON will be rejected on next start.
+
 ## Privacy & Security
 
-- All data is stored locally in SQLite database
-- Sensitive patterns are automatically excluded
-- No network connectivity required
-- No telemetry or data collection
-
-## Troubleshooting
-
-### Commands not being tracked
-
-1. Ensure the PROMPT_COMMAND is set correctly in `~/.bashrc`
-2. Check that `bashtrack` is in your PATH
-3. Verify permissions on the `~/.bashtrack` directory
-
-### Database issues
-
-The database is automatically created on first use. If you encounter issues:
-
-```bash
-# Check database location
-bashtrack config show
-
-# Clean up and restart
-rm -rf ~/.bashtrack
-bashtrack setup
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## License
-
-MIT License - see LICENSE file for details.
-
-## Alternative Setup Methods
-
-### Using bash-preexec
-
-If you have `bash-preexec` installed, you can use:
-
-```bash
-preexec() { bashtrack record "$1"; }
-```
-
-### Manual Integration
-
-For custom setups, you can integrate the tracking however you prefer by calling:
-
-```bash
-bashtrack record "your command here"
-```
+- All data stored locally (single SQLite file)
+- Sensitivity patterns (password/secret/token/key) excluded by regex by default
+- No network calls; no telemetry
+- Easy manual purge: delete `~/.bashtrack` or use `bashtrack cleanup`
 
 ## Build Instructions
 
 ```bash
-# Install dependencies
+# Install / verify dependencies
 go mod tidy
 
-# Build for current platform
+# Build (current platform)
 go build -o bashtrack
 
-# Build for multiple platforms
-GOOS=linux GOARCH=amd64 go build -o bashtrack-linux-amd64
-GOOS=darwin GOARCH=amd64 go build -o bashtrack-darwin-amd64
+# Cross-compile examples
+GOOS=linux   GOARCH=amd64 go build -o bashtrack-linux-amd64
+GOOS=linux   GOARCH=arm64 go build -o bashtrack-linux-arm64
+GOOS=darwin  GOARCH=amd64 go build -o bashtrack-darwin-amd64
+GOOS=darwin  GOARCH=arm64 go build -o bashtrack-darwin-arm64
 GOOS=windows GOARCH=amd64 go build -o bashtrack-windows-amd64.exe
+GOOS=windows GOARCH=arm64 go build -o bashtrack-windows-arm64.exe
 ```
 
-## Performance
-
-- Minimal overhead: ~1-2ms per command
-- SQLite database grows approximately 100-200 bytes per command
-- Automatic cleanup features to manage database size
-- Indexed for fast searches even with large datasets
+For reproducible builds pin Go version (e.g., with `go.mod` toolchain directive) and enable module proxy caching if desired.
 
 ## Roadmap
 
 - [ ] Export functionality (JSON, CSV)
-- [ ] Command frequency analysis
-- [ ] Integration with other shells (zsh, fish)
-- [ ] Web interface for browsing history
-- [ ] Sync capabilities across machines
+- [ ] Additional shell integrations (zsh, fish)
+- [ ] Optional local web UI for browsing & charts
