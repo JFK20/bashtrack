@@ -150,13 +150,12 @@ func (app *App) showStats(cmd *cobra.Command, args []string) {
 
 	fmt.Println("Command Tracking Statistics")
 	fmt.Println(strings.Repeat("=", 40))
-	fmt.Printf("Total commands: %d\n", totalCommands)
+	fmt.Printf("Total commands: %d\n\n", totalCommands)
 
 	if oldestDateStr.Valid && newestDateStr.Valid {
-		fmt.Println(oldestDateStr.String + " to " + newestDateStr.String)
 		// Parse the timestamp strings to time.Time
-		oldestDate, err1 := time.Parse("2006-01-02", oldestDateStr.String)
-		newestDate, err2 := time.Parse("2006-01-02", newestDateStr.String)
+		oldestDate, err1 := time.Parse("2006-01-02 15:04:05.999999999-07:00", oldestDateStr.String)
+		newestDate, err2 := time.Parse("2006-01-02 15:04:05.999999999-07:00", newestDateStr.String)
 
 		if err1 == nil && err2 == nil {
 			fmt.Printf("Date range: %s to %s\n",
@@ -170,8 +169,6 @@ func (app *App) showStats(cmd *cobra.Command, args []string) {
 		} else {
 			fmt.Println("Error parsing date strings.")
 		}
-	} else {
-		fmt.Println("No commands recorded yet.")
 	}
 
 	// Top directories
@@ -306,16 +303,6 @@ func (app *App) showSetupInstructions(cmd *cobra.Command, args []string) {
 	fmt.Println()
 	fmt.Println("Then reload your bash configuration:")
 	fmt.Println("  source ~/.bashrc")
-	fmt.Println()
-	fmt.Println("Alternative method using preexec (if you have bash-preexec installed):")
-	fmt.Printf("  preexec() { %s record \"$1\"; }\n", execPath)
-	fmt.Println()
-	fmt.Println("Usage Commands:")
-	fmt.Printf("  %s list              # Show recent commands\n", appName)
-	fmt.Printf("  %s search <pattern>  # Search for commands\n", appName)
-	fmt.Printf("  %s stats             # Show statistics\n", appName)
-	fmt.Printf("  %s config show       # Show configuration\n", appName)
-	fmt.Printf("  %s cleanup           # Remove old commands\n", appName)
 	fmt.Println()
 	fmt.Println("Note: The tool automatically excludes common commands and sensitive patterns.")
 	fmt.Println("You can customize exclusions using 'config add-exclude' and 'config remove-exclude'.")
