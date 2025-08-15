@@ -36,11 +36,6 @@ sudo mv bashtrack /usr/local/bin/
 install -m 755 bashtrack "$HOME/.local/bin/"  # ensure ~/.local/bin is in PATH
 ```
 
-(Alternative) Direct install with Go toolchain:
-```bash
-go install github.com/your-user/bashtrack@latest
-```
-
 ## Setup
 
 Two alternative integration methods. Prefer Method 1 (fc) for accuracy & zero race conditions.
