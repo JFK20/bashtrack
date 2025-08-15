@@ -27,6 +27,7 @@ type Command struct {
 	Timestamp time.Time `json:"timestamp"`
 	Command   string    `json:"command"`
 	Directory string    `json:"directory"`
+	Words     []string  `json:"words"`
 }
 
 type App struct {

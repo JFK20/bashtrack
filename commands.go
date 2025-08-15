@@ -28,7 +28,8 @@ func (app *App) shouldExclude(command string) bool {
 func (app *App) recordCommand(cmd *cobra.Command, args []string) {
 	command := strings.Join(args, " ")
 
-	// Get current working directory
+	fmt.Printf("Recording command: %s\n", command)
+
 	wd, err := os.Getwd()
 	if err != nil {
 		wd = "unknown"
@@ -39,7 +40,15 @@ func (app *App) recordCommand(cmd *cobra.Command, args []string) {
 		return // Silently skip excluded commands
 	}
 
-	// Use a transaction to ensure atomicity and proper connection handling
+	// Split command into words for word-by-word storage
+	words := strings.Fields(command)
+	if len(words) == 0 {
+		return // Skip empty commands
+	}
+
+	fmt.Printf("  Words: %s\n", strings.Join(words, " "))
+
+	// Use a transaction to ensure atomicity
 	tx, err := app.db.Begin()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error beginning transaction: %v\n", err)
@@ -47,17 +56,36 @@ func (app *App) recordCommand(cmd *cobra.Command, args []string) {
 	}
 	defer tx.Rollback() // Safe to call even after commit
 
-	// Insert command into database
-	_, err = tx.Exec(
-		"INSERT INTO commands (timestamp, command, directory) VALUES (?, ?, ?)",
+	// Insert main command record
+	result, err := tx.Exec(
+		"INSERT INTO commands (timestamp, directory, full_command) VALUES (?, ?, ?)",
 		time.Now(),
-		command,
 		wd,
+		command,
 	)
-
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error recording command: %v\n", err)
 		return
+	}
+
+	commandID, err := result.LastInsertId()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error getting command ID: %v\n", err)
+		return
+	}
+
+	// Insert each word with its position
+	for position, word := range words {
+		_, err = tx.Exec(
+			"INSERT INTO command_words (command_id, word_position, word) VALUES (?, ?, ?)",
+			commandID,
+			position,
+			word,
+		)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error recording word '%s': %v\n", word, err)
+			return
+		}
 	}
 
 	// Commit the transaction
@@ -71,12 +99,13 @@ func (app *App) listCommands(cmd *cobra.Command, args []string) {
 	filter, _ := cmd.Flags().GetString("filter")
 	directory, _ := cmd.Flags().GetString("directory")
 
-	query := "SELECT id, timestamp, command, directory FROM commands WHERE 1=1"
+	query := "SELECT id, timestamp, full_command, directory FROM commands WHERE 1=1"
 	var queryArgs []interface{}
 
 	if filter != "" {
-		query += " AND command LIKE ?"
-		queryArgs = append(queryArgs, "%"+filter+"%")
+		// Search in both full command and individual words
+		query += " AND (full_command LIKE ? OR id IN (SELECT command_id FROM command_words WHERE word LIKE ?))"
+		queryArgs = append(queryArgs, "%"+filter+"%", "%"+filter+"%")
 	}
 
 	if directory != "" {
@@ -104,19 +133,53 @@ func (app *App) listCommands(cmd *cobra.Command, args []string) {
 			continue
 		}
 
+		// Load individual words for this command
+		c.Words, _ = app.loadCommandWords(c.ID)
+
 		fmt.Printf("[%d] %s\n", c.ID, c.Timestamp.Format("2006-01-02 15:04:05"))
 		fmt.Printf("    Dir: %s\n", c.Directory)
 		fmt.Printf("    Cmd: %s\n", c.Command)
+		if len(c.Words) > 0 {
+			fmt.Printf("    Words: [%s]\n", strings.Join(c.Words, "] ["))
+		}
 		fmt.Println()
 	}
+}
+
+// Helper function to load individual words for a command
+func (app *App) loadCommandWords(commandID int) ([]string, error) {
+	rows, err := app.db.Query(
+		"SELECT word FROM command_words WHERE command_id = ? ORDER BY word_position",
+		commandID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var words []string
+	for rows.Next() {
+		var word string
+		if err := rows.Scan(&word); err != nil {
+			continue
+		}
+		words = append(words, word)
+	}
+
+	return words, nil
 }
 
 func (app *App) searchCommands(cmd *cobra.Command, args []string) {
 	pattern := args[0]
 
-	rows, err := app.db.Query(
-		"SELECT id, timestamp, command, directory FROM commands WHERE command LIKE ? ORDER BY timestamp DESC LIMIT 50",
-		"%"+pattern+"%",
+	// Enhanced search that looks in both full commands and individual words
+	rows, err := app.db.Query(`
+		SELECT DISTINCT c.id, c.timestamp, c.full_command, c.directory 
+		FROM commands c 
+		LEFT JOIN command_words cw ON c.id = cw.command_id 
+		WHERE c.full_command LIKE ? OR cw.word LIKE ? 
+		ORDER BY c.timestamp DESC LIMIT 50`,
+		"%"+pattern+"%", "%"+pattern+"%",
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error searching commands: %v\n", err)
@@ -135,9 +198,15 @@ func (app *App) searchCommands(cmd *cobra.Command, args []string) {
 			continue
 		}
 
+		// Load individual words for this command
+		c.Words, _ = app.loadCommandWords(c.ID)
+
 		fmt.Printf("[%d] %s\n", c.ID, c.Timestamp.Format("2006-01-02 15:04:05"))
 		fmt.Printf("    Dir: %s\n", c.Directory)
 		fmt.Printf("    Cmd: %s\n", c.Command)
+		if len(c.Words) > 0 {
+			fmt.Printf("    Words: [%s]\n", strings.Join(c.Words, "] ["))
+		}
 		fmt.Println()
 		count++
 	}
@@ -204,12 +273,12 @@ func (app *App) showStats(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// Most used commands
+	// Most used commands (using full_command instead of command)
 	fmt.Println("\nMost Used Commands:")
 	rows, err = app.db.Query(`
-		SELECT command, COUNT(*) as count 
+		SELECT full_command, COUNT(*) as count 
 		FROM commands 
-		GROUP BY command 
+		GROUP BY full_command 
 		ORDER BY count DESC 
 		LIMIT 10
 	`)
@@ -224,6 +293,25 @@ func (app *App) showStats(cmd *cobra.Command, args []string) {
 				command = command[:50] + "..."
 			}
 			fmt.Printf("  %s: %d\n", command, count)
+		}
+	}
+
+	// Most used individual words
+	fmt.Println("\nMost Used Words:")
+	rows, err = app.db.Query(`
+		SELECT word, COUNT(*) as count 
+		FROM command_words 
+		GROUP BY word 
+		ORDER BY count DESC 
+		LIMIT 15
+	`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var word string
+			var count int
+			rows.Scan(&word, &count)
+			fmt.Printf("  %s: %d\n", word, count)
 		}
 	}
 }
