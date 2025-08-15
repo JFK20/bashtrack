@@ -19,7 +19,6 @@ func (app *App) shouldExclude(command string) bool {
 			continue // Skip invalid patterns
 		}
 		if matched {
-			fmt.Printf("matched pattern: %s for %s\n", pattern, command)
 			return true
 		}
 	}
@@ -35,15 +34,21 @@ func (app *App) recordCommand(cmd *cobra.Command, args []string) {
 		wd = "unknown"
 	}
 
-	fmt.Println("before filtering " + command)
-
 	// Check if command should be excluded
 	if app.shouldExclude(command) {
 		return // Silently skip excluded commands
 	}
 
+	// Use a transaction to ensure atomicity and proper connection handling
+	tx, err := app.db.Begin()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error beginning transaction: %v\n", err)
+		return
+	}
+	defer tx.Rollback() // Safe to call even after commit
+
 	// Insert command into database
-	_, err = app.db.Exec(
+	_, err = tx.Exec(
 		"INSERT INTO commands (timestamp, command, directory) VALUES (?, ?, ?)",
 		time.Now(),
 		command,
@@ -52,6 +57,12 @@ func (app *App) recordCommand(cmd *cobra.Command, args []string) {
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error recording command: %v\n", err)
+		return
+	}
+
+	// Commit the transaction
+	if err = tx.Commit(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error committing transaction: %v\n", err)
 	}
 }
 

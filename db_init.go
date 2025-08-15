@@ -8,10 +8,15 @@ import (
 )
 
 func initDatabase(dbPath string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", dbPath)
+	// Add connection parameters to prevent database locking
+	connectionString := fmt.Sprintf("%s?cache=shared&mode=rwc&_journal_mode=WAL&_timeout=5000", dbPath)
+	db, err := sql.Open("sqlite3", connectionString)
 	if err != nil {
 		return nil, err
 	}
+
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(0)
 
 	// Create table if not exists
 	createTableSQL := `
