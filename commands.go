@@ -440,22 +440,31 @@ func (app *App) cleanupCommands(cmd *cobra.Command, args []string) {
 	}
 	defer tx.Rollback() // Safe to call even after commit
 
-	// First, count the commands that will be deleted
-	var commandsToDelete []int64
-	rows, err := tx.Query("SELECT Id FROM commands WHERE timestamp < ?", cutoff)
+	// Delete command_word_positions for commands older than cutoff
+	_, err = tx.Exec(`
+    DELETE FROM command_word_positions 
+    WHERE command_id IN (
+        SELECT id FROM commands WHERE timestamp < ?
+    )`, cutoff)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error counting commands to delete: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error cleaning up command word positions: %v\n", err)
 		return
 	}
 
-	// Delete old commands (CASCADE will automatically delete related command_word_positions)
-	result, err := tx.Exec("DELETE FROM command_word_positions WHERE word_id in (?)", commandsToDelete)
+	// Delete old commands
+	result2, err := tx.Exec("DELETE FROM commands WHERE timestamp < ?", cutoff)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error cleaning up commands: %v\n", err)
 		return
 	}
 
-	affected, _ := result.RowsAffected()
+	affected, _ := result2.RowsAffected()
+
+	// Delete old words
+	_, err = tx.Exec("DELETE FROM words WHERE id NOT IN (SELECT word_id FROM command_word_positions)")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error cleaning up words: %v\n", err)
+	}
 
 	// Commit the transaction
 	if err = tx.Commit(); err != nil {
@@ -469,8 +478,6 @@ func (app *App) cleanupCommands(cmd *cobra.Command, args []string) {
 	_, err = app.db.Exec("VACUUM")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Could not vacuum database: %v\n", err)
-	} else {
-		fmt.Printf("  - Database vacuumed to reclaim disk space\n")
 	}
 }
 
