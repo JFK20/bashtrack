@@ -1,4 +1,4 @@
-.PHONY: build clean install test fmt vet deps
+.PHONY: build clean install fmt deps
 
 BINARY_NAME=bashtrack
 BUILD_DIR=build

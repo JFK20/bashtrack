@@ -52,6 +52,24 @@ func (app *App) recordCommand(cmd *cobra.Command, args []string) {
 	}
 	defer tx.Rollback() // Safe to call even after commit
 
+	//Check if the command already exists
+	rows, err := app.db.Query("SELECT * FROM commands WHERE full_command = $1", command)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error querying commands: %v\n", err)
+		return
+	}
+
+	if rows.Next() {
+		defer rows.Close()
+		//update the time stamp
+		_, err := tx.Exec("UPDATE commands SET timestamp = $1", time.Now())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error updating commands: %v\n", err)
+			return
+		}
+		//Update complete return
+		return
+	}
 	// Insert main command record
 	result, err := tx.Exec(
 		"INSERT INTO commands (timestamp, directory, full_command) VALUES (?, ?, ?)",

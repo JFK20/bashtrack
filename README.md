@@ -40,8 +40,9 @@ install -m 755 bashtrack "$HOME/.local/bin/"  # ensure ~/.local/bin is in PATH
 
 Two alternative integration methods. Prefer Method 1 (fc) for accuracy & zero race conditions.
 
-Method 1 (Recommended: fc built‑in)
-Add to your ~/.bashrc (append near the end):
+Method 1 (Recommended: fc built‑in) \
+Add to your ~/.bashrc (append near the end): \
+Remove the `2>/dev/null` after `bashtrack record "$last_cmd"` if you want to see errors
 ```bash
 # BashTrack command recording (Method 1)
 bashtrack_record() {
