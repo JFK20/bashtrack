@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -103,7 +104,7 @@ func (app *App) recordCommand(cmd *cobra.Command, args []string) {
 		// First, get or create the word in the words table
 		var wordID int
 		err = tx.QueryRow("SELECT id FROM words WHERE word = ?", word).Scan(&wordID)
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			// Word doesn't exist, insert it
 			result, err := tx.Exec("INSERT INTO words (word) VALUES (?)", word)
 			if err != nil {
