@@ -432,14 +432,46 @@ func (app *App) cleanupCommands(cmd *cobra.Command, args []string) {
 	days, _ := cmd.Flags().GetInt("days")
 	cutoff := time.Now().AddDate(0, 0, -days)
 
-	result, err := app.db.Exec("DELETE FROM commands WHERE timestamp < ?", cutoff)
+	// Use a transaction to ensure atomicity
+	tx, err := app.db.Begin()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error beginning transaction: %v\n", err)
+		return
+	}
+	defer tx.Rollback() // Safe to call even after commit
+
+	// First, count the commands that will be deleted
+	var commandsToDelete []int64
+	rows, err := tx.Query("SELECT Id FROM commands WHERE timestamp < ?", cutoff)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error counting commands to delete: %v\n", err)
+		return
+	}
+
+	// Delete old commands (CASCADE will automatically delete related command_word_positions)
+	result, err := tx.Exec("DELETE FROM command_word_positions WHERE word_id in (?)", commandsToDelete)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error cleaning up commands: %v\n", err)
 		return
 	}
 
 	affected, _ := result.RowsAffected()
-	fmt.Printf("Removed %d commands older than %d days\n", affected, days)
+
+	// Commit the transaction
+	if err = tx.Commit(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error committing cleanup transaction: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Cleanup completed:\n")
+	fmt.Printf("  - Removed %d commands older than %d days\n", affected, days)
+
+	_, err = app.db.Exec("VACUUM")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Could not vacuum database: %v\n", err)
+	} else {
+		fmt.Printf("  - Database vacuumed to reclaim disk space\n")
+	}
 }
 
 func (app *App) showSetupInstructions(cmd *cobra.Command, args []string) {
