@@ -26,17 +26,9 @@ install-user: build
 	mkdir -p ~/bin
 	cp $(BUILD_DIR)/$(BINARY_NAME) ~/bin/
 
-# Run tests
-test:
-	go test -v ./...
-
 # Format code
 fmt:
 	go fmt ./...
-
-# Vet code
-vet:
-	go vet ./...
 
 # Install dependencies
 deps:
@@ -46,12 +38,6 @@ deps:
 # Clean build artifacts
 clean:
 	rm -rf $(BUILD_DIR)
-
-# Development build
-dev: fmt vet build
-
-# Release build
-release: clean fmt vet test build-all
 
 # Run with sample data for testing
 run-sample:

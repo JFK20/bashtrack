@@ -44,8 +44,6 @@ func (app *App) recordCommand(cmd *cobra.Command, args []string) {
 		return // Skip empty commands
 	}
 
-	fmt.Printf("  Words: %s\n", strings.Join(words, " "))
-
 	// Use a transaction to ensure atomicity
 	tx, err := app.db.Begin()
 	if err != nil {
