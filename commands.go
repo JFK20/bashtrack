@@ -26,7 +26,7 @@ func (app *App) shouldExclude(command string) bool {
 	return false
 }
 
-func (app *App) recordCommand(cmd *cobra.Command, args []string) {
+func (app *App) recordCommand(_ *cobra.Command, args []string) {
 	command := strings.Join(args, " ")
 
 	wd, err := os.Getwd()
@@ -48,7 +48,7 @@ func (app *App) recordCommand(cmd *cobra.Command, args []string) {
 	// Use a transaction to ensure atomicity
 	tx, err := app.db.Begin()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error beginning transaction: %v\n", err)
+		ErrorLogger.Printf("Error beginning transaction: %v\n", err)
 		return
 	}
 	defer tx.Rollback() // Safe to call even after commit
@@ -56,7 +56,7 @@ func (app *App) recordCommand(cmd *cobra.Command, args []string) {
 	//Check if the command already exists
 	rows, err := app.db.Query("SELECT id FROM commands WHERE full_command = ?", command)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error querying commands: %v\n", err)
+		ErrorLogger.Printf("Error querying commands: %v\n", err)
 		return
 	}
 
@@ -65,18 +65,18 @@ func (app *App) recordCommand(cmd *cobra.Command, args []string) {
 		err := rows.Scan(&existingCommandID)
 		rows.Close()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error scanning command ID: %v\n", err)
+			ErrorLogger.Printf("Error scanning command ID: %v\n", err)
 			return
 		}
 		//update the time stamp
 		_, err = tx.Exec("UPDATE commands SET timestamp = ? WHERE id = ?", time.Now(), existingCommandID)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error updating commands: %v\n", err)
+			ErrorLogger.Printf("Error updating commands: %v\n", err)
 			return
 		}
 		// Commit the transaction and return
 		if err = tx.Commit(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error committing transaction: %v\n", err)
+			ErrorLogger.Printf("Error committing transaction: %v\n", err)
 		}
 		return
 	}
@@ -89,13 +89,13 @@ func (app *App) recordCommand(cmd *cobra.Command, args []string) {
 		command,
 	)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error recording command: %v\n", err)
+		ErrorLogger.Printf("Error recording command: %v\n", err)
 		return
 	}
 
 	commandID, err := result.LastInsertId()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error getting command ID: %v\n", err)
+		ErrorLogger.Printf("Error getting command ID: %v\n", err)
 		return
 	}
 
@@ -108,17 +108,17 @@ func (app *App) recordCommand(cmd *cobra.Command, args []string) {
 			// Word doesn't exist, insert it
 			result, err := tx.Exec("INSERT INTO words (word) VALUES (?)", word)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error inserting word '%s': %v\n", word, err)
+				ErrorLogger.Printf("Error inserting word '%s': %v\n", word, err)
 				return
 			}
 			wordIDInt64, err := result.LastInsertId()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error getting word ID for '%s': %v\n", word, err)
+				ErrorLogger.Printf("Error getting word ID for '%s': %v\n", word, err)
 				return
 			}
 			wordID = int(wordIDInt64)
 		} else if err != nil {
-			fmt.Fprintf(os.Stderr, "Error checking word '%s': %v\n", word, err)
+			ErrorLogger.Printf("Error checking word '%s': %v\n", word, err)
 			return
 		}
 
@@ -130,18 +130,18 @@ func (app *App) recordCommand(cmd *cobra.Command, args []string) {
 			position,
 		)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error recording word position for '%s': %v\n", word, err)
+			ErrorLogger.Printf("Error recording word position for '%s': %v\n", word, err)
 			return
 		}
 	}
 
 	// Commit the transaction
 	if err = tx.Commit(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error committing transaction: %v\n", err)
+		ErrorLogger.Printf("Error committing transaction: %v\n", err)
 	}
 }
 
-func (app *App) listCommands(cmd *cobra.Command, args []string) {
+func (app *App) listCommands(cmd *cobra.Command, _ []string) {
 	limit, _ := cmd.Flags().GetInt("limit")
 	filter, _ := cmd.Flags().GetString("filter")
 	directory, _ := cmd.Flags().GetString("directory")
@@ -165,7 +165,7 @@ func (app *App) listCommands(cmd *cobra.Command, args []string) {
 
 	rows, err := app.db.Query(query, queryArgs...)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error querying commands: %v\n", err)
+		ErrorLogger.Printf("Error querying commands: %v\n", err)
 		return
 	}
 	defer rows.Close()
@@ -220,7 +220,7 @@ func (app *App) loadCommandWords(commandID int) ([]string, error) {
 	return words, nil
 }
 
-func (app *App) searchCommands(cmd *cobra.Command, args []string) {
+func (app *App) searchCommands(_ *cobra.Command, args []string) {
 	pattern := args[0]
 
 	// Enhanced search that looks in both full commands and individual words
@@ -234,7 +234,7 @@ func (app *App) searchCommands(cmd *cobra.Command, args []string) {
 		"%"+pattern+"%", "%"+pattern+"%",
 	)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error searching commands: %v\n", err)
+		ErrorLogger.Printf("Error searching commands: %v\n", err)
 		return
 	}
 	defer rows.Close()
@@ -268,18 +268,18 @@ func (app *App) searchCommands(cmd *cobra.Command, args []string) {
 	}
 }
 
-func (app *App) showStats(cmd *cobra.Command, args []string) {
+func (app *App) showStats(_ *cobra.Command, _ []string) {
 	var totalCommands int
 	err := app.db.QueryRow("SELECT COUNT(*) FROM commands").Scan(&totalCommands)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error getting total commands: %v\n", err)
+		ErrorLogger.Printf("Error getting total commands: %v\n", err)
 		return
 	}
 
 	var oldestDateStr, newestDateStr sql.NullString
 	err = app.db.QueryRow("SELECT MIN(timestamp), MAX(timestamp) FROM commands").Scan(&oldestDateStr, &newestDateStr)
-	if err != nil && err != sql.ErrNoRows {
-		fmt.Fprintf(os.Stderr, "Error getting date range: %v\n", err)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		ErrorLogger.Printf("Error getting date range: %v\n", err)
 		return
 	}
 
@@ -369,7 +369,7 @@ func (app *App) showStats(cmd *cobra.Command, args []string) {
 	}
 }
 
-func (app *App) showConfig(cmd *cobra.Command, args []string) {
+func (app *App) showConfig(_ *cobra.Command, _ []string) {
 	fmt.Println("Current Configuration:")
 	fmt.Println(strings.Repeat("=", 30))
 	fmt.Printf("Database: %s\n", app.config.DatabasePath)
@@ -379,7 +379,7 @@ func (app *App) showConfig(cmd *cobra.Command, args []string) {
 	}
 }
 
-func (app *App) addExcludePattern(cmd *cobra.Command, args []string) {
+func (app *App) addExcludePattern(_ *cobra.Command, args []string) {
 	pattern := args[0]
 
 	// Check if pattern already exists
@@ -397,14 +397,14 @@ func (app *App) addExcludePattern(cmd *cobra.Command, args []string) {
 
 	_, err := saveConfig(configPath, app.config)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error saving config: %v\n", err)
+		ErrorLogger.Printf("Error saving config: %v\n", err)
 		return
 	}
 
 	fmt.Printf("Added exclude pattern: %s\n", pattern)
 }
 
-func (app *App) removeExcludePattern(cmd *cobra.Command, args []string) {
+func (app *App) removeExcludePattern(_ *cobra.Command, args []string) {
 	pattern := args[0]
 
 	for i, existing := range app.config.ExcludePatterns {
@@ -416,7 +416,7 @@ func (app *App) removeExcludePattern(cmd *cobra.Command, args []string) {
 
 			_, err := saveConfig(configPath, app.config)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error saving config: %v\n", err)
+				ErrorLogger.Printf("Error saving config: %v\n", err)
 				return
 			}
 
@@ -428,14 +428,14 @@ func (app *App) removeExcludePattern(cmd *cobra.Command, args []string) {
 	fmt.Printf("Pattern '%s' not found\n", pattern)
 }
 
-func (app *App) cleanupCommands(cmd *cobra.Command, args []string) {
+func (app *App) cleanupCommands(cmd *cobra.Command, _ []string) {
 	days, _ := cmd.Flags().GetInt("days")
 	cutoff := time.Now().AddDate(0, 0, -days)
 
 	// Use a transaction to ensure atomicity
 	tx, err := app.db.Begin()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error beginning transaction: %v\n", err)
+		ErrorLogger.Printf("Error beginning transaction: %v\n", err)
 		return
 	}
 	defer tx.Rollback() // Safe to call even after commit
@@ -447,14 +447,14 @@ func (app *App) cleanupCommands(cmd *cobra.Command, args []string) {
         SELECT id FROM commands WHERE timestamp < ?
     )`, cutoff)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error cleaning up command word positions: %v\n", err)
+		ErrorLogger.Printf("Error cleaning up command word positions: %v\n", err)
 		return
 	}
 
 	// Delete old commands
 	result2, err := tx.Exec("DELETE FROM commands WHERE timestamp < ?", cutoff)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error cleaning up commands: %v\n", err)
+		ErrorLogger.Printf("Error cleaning up commands: %v\n", err)
 		return
 	}
 
@@ -463,12 +463,12 @@ func (app *App) cleanupCommands(cmd *cobra.Command, args []string) {
 	// Delete old words
 	_, err = tx.Exec("DELETE FROM words WHERE id NOT IN (SELECT word_id FROM command_word_positions)")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error cleaning up words: %v\n", err)
+		ErrorLogger.Printf("Error cleaning up words: %v\n", err)
 	}
 
 	// Commit the transaction
 	if err = tx.Commit(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error committing cleanup transaction: %v\n", err)
+		ErrorLogger.Printf("Error committing cleanup transaction: %v\n", err)
 		return
 	}
 
@@ -477,11 +477,11 @@ func (app *App) cleanupCommands(cmd *cobra.Command, args []string) {
 
 	_, err = app.db.Exec("VACUUM")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: Could not vacuum database: %v\n", err)
+		ErrorLogger.Printf("Warning: Could not vacuum database: %v\n", err)
 	}
 }
 
-func (app *App) showSetupInstructions(cmd *cobra.Command, args []string) {
+func (app *App) showSetupInstructions(_ *cobra.Command, _ []string) {
 	execPath, err := os.Executable()
 	if err != nil {
 		execPath = appName
