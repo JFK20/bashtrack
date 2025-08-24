@@ -73,3 +73,17 @@ func saveConfig(configPath string, config *Config) (*Config, error) {
 
 	return config, nil
 }
+
+func loadConfigFromPath(configPath string) (*Config, error) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	config := &Config{}
+	if err := json.Unmarshal(data, config); err != nil {
+		return nil, fmt.Errorf("failed to parse config: %w", err)
+	}
+
+	return config, nil
+}

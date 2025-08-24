@@ -2,3 +2,4 @@ bashtrack
 commands.db
 .idea
 build
+coverage*

@@ -35,6 +35,15 @@ deps:
 	go mod download
 	go mod tidy
 
+# Run tests
+test:
+	go test -v ./...
+
+# Run tests with coverage
+test-coverage:
+	go test -v -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+
 # Clean build artifacts
 clean:
 	rm -rf $(BUILD_DIR)
