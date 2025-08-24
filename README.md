@@ -15,11 +15,17 @@ A powerful, lightweight CLI (Go) that persistently records your interactive bash
 
 ## Installation
 
+### Go Toolchain
+
+```bash
+Go install github.com/JFK20/bashtrack@latest
+```
+
 ### From Source
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/JFK20/bashtrack
 cd bashtrack
 ```
 
@@ -168,28 +174,8 @@ Edits can be made manually or through `bashtrack config` subcommands. Invalid JS
 - No network calls; no telemetry
 - Easy manual purge: delete `~/.bashtrack` or use `bashtrack cleanup`
 
-## Build Instructions
-
-```bash
-# Install / verify dependencies
-go mod tidy
-
-# Build (current platform)
-go build -o bashtrack
-
-# Cross-compile examples
-GOOS=linux   GOARCH=amd64 go build -o bashtrack-linux-amd64
-GOOS=linux   GOARCH=arm64 go build -o bashtrack-linux-arm64
-GOOS=darwin  GOARCH=amd64 go build -o bashtrack-darwin-amd64
-GOOS=darwin  GOARCH=arm64 go build -o bashtrack-darwin-arm64
-GOOS=windows GOARCH=amd64 go build -o bashtrack-windows-amd64.exe
-GOOS=windows GOARCH=arm64 go build -o bashtrack-windows-arm64.exe
-```
-
-For reproducible builds pin Go version (e.g., with `go.mod` toolchain directive) and enable module proxy caching if desired.
-
 ## Roadmap
 
+- [ ] search offers cd into found directories
 - [ ] Export functionality (JSON, CSV)
 - [ ] Additional shell integrations (zsh, fish)
-- [ ] Optional local web UI for browsing & charts
